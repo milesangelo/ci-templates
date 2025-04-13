@@ -85,8 +85,8 @@ runs:
       if: ${{ inputs.nginx_conf_dir != '' }}
       shell: bash
       run: |
-        scp -r ${{ inputs.nginx_conf_dir }}/* ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/etc/nginx/sites-available/
-        ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} "sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default && sudo nginx -s reload"
+        scp -r ${{ inputs.nginx_conf_dir }}/* ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/etc/nginx/conf.d/
+        ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} "sudo nginx -s reload"
 
     - name: Deploy on Linode
       shell: bash

@@ -29,6 +29,9 @@ inputs:
   github_token:
     description: ""
     required: true
+  nginx_conf_dir:
+    description: "Path to the nginx config directory in the repo (optional)"
+    required: false
 
 runs:
   using: "composite"
@@ -78,6 +81,13 @@ runs:
       run: |
         scp .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
 
+    - name: Copy nginx config to Linode (if provided)
+      if: ${{ inputs.nginx_conf_dir != '' }}
+      shell: bash
+      run: |
+        scp -r ${{ inputs.nginx_conf_dir }}/* ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/etc/nginx/sites-available/
+        ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} "sudo ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default && sudo nginx -s reload"
+
     - name: Deploy on Linode
       shell: bash
       run: |
@@ -94,6 +104,10 @@ runs:
             -p ${{ inputs.port }}:3000 \
             --env-file /home/${{ inputs.linode_username }}/.env \
             ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+
+          if [ -d "${{ inputs.nginx_conf_dir }}" ]; then
+            sudo nginx -s reload
+          fi
 
           docker image prune -af
           docker logout ghcr.io

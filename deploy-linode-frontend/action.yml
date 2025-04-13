@@ -9,8 +9,8 @@ inputs:
     description: ""
     required: true
   port:
-    description: ""
-    default: "3000"
+    description: "Docker internal port"
+    default: "80"
   env_vars:
     required: true
     description: "Multiline string of KEY=VALUE env vars to write to .env"
@@ -101,7 +101,7 @@ runs:
           docker run -d \
             --name ${{ inputs.docker_container_name }} \
             --restart unless-stopped \
-            -p ${{ inputs.port }}:3000 \
+            -p 3000:${{ inputs.port }} \
             --env-file /home/${{ inputs.linode_username }}/.env \
             ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
 

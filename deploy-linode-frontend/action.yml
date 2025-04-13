@@ -14,6 +14,21 @@ inputs:
   env_vars:
     required: true
     description: "Multiline string of KEY=VALUE env vars to write to .env"
+  ssh_private_key:
+    description: ""
+    required: true
+  ssh_known_hosts:
+    description: ""
+    required: true
+  linode_username:
+    description: ""
+    required: true
+  linode_host:
+    description: ""
+    required: true
+  github_token:
+    description: ""
+    required: true
 
 runs:
   using: "composite"
@@ -29,7 +44,7 @@ runs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        password: ${{ inputs.github_token }}
 
     - name: Create .env file
       shell: bash
@@ -55,19 +70,19 @@ runs:
     - name: Install SSH key
       uses: shimataro/ssh-key-action@v2
       with:
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+        key: ${{ inputs.ssh_private_key }}
+        known_hosts: ${{ inputs.ssh_known_hosts }}
 
     - name: Copy .env to Linode
       shell: bash
       run: |
-        scp .env ${{ secrets.LINODE_USERNAME }}@${{ secrets.LINODE_HOST }}:/home/${{ secrets.LINODE_USERNAME }}/.env
+        scp .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
 
     - name: Deploy on Linode
       shell: bash
       run: |
-        ssh ${{ secrets.LINODE_USERNAME }}@${{ secrets.LINODE_HOST }} << 'ENDSSH'
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
+          echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
           docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
           docker stop ${{ inputs.docker_container_name }} || true
@@ -77,7 +92,7 @@ runs:
             --name ${{ inputs.docker_container_name }} \
             --restart unless-stopped \
             -p ${{ inputs.port }}:3000 \
-            --env-file /home/${{ secrets.LINODE_USERNAME }}/.env \
+            --env-file /home/${{ inputs.linode_username }}/.env \
             ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
 
           docker image prune -af

@@ -1,0 +1,24 @@
+{
+  // Enable format on save for YAML
+  "[yaml]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "redhat.vscode-yaml"
+  },
+
+  // GitHub Actions schema validation for workflow files
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.{yml,yaml}"
+  },
+
+  // Optional: Format behavior for YAML files
+  "yaml.format.enable": true,
+  "yaml.format.singleQuote": false,
+  "yaml.format.bracketSpacing": true,
+  "yaml.validate": true,
+
+  // Optional: Hide annoying hover docs if you want a cleaner UI
+  "yaml.hover": true,
+
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 500
+}

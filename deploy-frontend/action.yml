@@ -1,0 +1,85 @@
+name: "Deploy Frontend App to Linode"
+description: "Builds Docker image, pushes to GHCR, and deploys to Linode over SSH"
+
+inputs:
+  docker_image_name:
+    description: ""
+    required: true
+  docker_container_name:
+    description: ""
+    required: true
+  port:
+    description: ""
+    default: "3000"
+  env_vars:
+    required: true
+    description: "Multiline string of KEY=VALUE env vars to write to .env"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Create .env file
+      shell: bash
+      run: |
+        echo "${{ inputs.env_vars }}" > .env
+
+    - name: Set lowercase repository owner
+      shell: bash
+      run: |
+        echo "REPO_OWNER_LOWERCASE=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: |
+          ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:${{ github.sha }}
+          ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2
+      with:
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        known_hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+
+    - name: Copy .env to Linode
+      shell: bash
+      run: |
+        scp .env ${{ secrets.LINODE_USERNAME }}@${{ secrets.LINODE_HOST }}:/home/${{ secrets.LINODE_USERNAME }}/.env
+
+    - name: Deploy on Linode
+      shell: bash
+      run: |
+        ssh ${{ secrets.LINODE_USERNAME }}@${{ secrets.LINODE_HOST }} << 'ENDSSH'
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+          docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+          docker stop ${{ inputs.docker_container_name }} || true
+          docker rm ${{ inputs.docker_container_name }} || true
+
+          docker run -d \
+            --name ${{ inputs.docker_container_name }} \
+            --restart unless-stopped \
+            -p ${{ inputs.port }}:3000 \
+            --env-file /home/${{ secrets.LINODE_USERNAME }}/.env \
+            ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+
+          docker image prune -af
+          docker logout ghcr.io
+        ENDSSH

@@ -12,7 +12,7 @@ inputs:
     description: "Docker internal port"
     default: "80"
   env_vars:
-    required: true
+    required: false
     description: "Multiline string of KEY=VALUE env vars to write to .env"
   ssh_private_key:
     description: "Private key for the remote destination server"

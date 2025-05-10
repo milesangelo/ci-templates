@@ -43,20 +43,20 @@ runs:
       shell: bash
       run: echo "REPO_OWNER_LOWERCASE=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-    - name: Cache npm and Vite
+    - name: Cache yarn and Vite
       uses: actions/cache@v3
       with:
         path: |
-          ~/.npm
+          ~/.cache/yarn
           node_modules
-        key: ${{ runner.os }}-vite-${{ hashFiles('**/package-lock.json') }}
-        restore-keys: ${{ runner.os }}-vite-
+        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+        restore-keys: ${{ runner.os }}-yarn-
 
     - name: Install dependencies and build Vite app
       shell: bash
       run: |
-        npm ci
-        npm run build
+        yarn install --frozen-lockfile
+        yarn build
 
     - name: Create .env file
       shell: bash

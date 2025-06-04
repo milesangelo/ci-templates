@@ -82,6 +82,14 @@ runs:
               build-contexts: |
                   dist=./dist
 
+        - name: Set up SSH
+          shell: bash
+          run: |
+              mkdir -p ~/.ssh
+              touch ~/.ssh/config
+              chmod 600 ~/.ssh/config
+              chmod 700 ~/.ssh
+
         - name: Install SSH key
           uses: shimataro/ssh-key-action@v2
           with:

@@ -15,7 +15,7 @@ inputs:
         required: false
         description: "Multiline string of KEY=VALUE env vars to write to .env"
     ssh_private_key:
-        description: "Private key for the remote destination server"
+        description: "Private key for the remote destination server (use LINODE_SSH_PRIVATE_KEY secret)"
         required: true
     linode_username:
         description: "linode remote server username"
@@ -87,6 +87,18 @@ runs:
           with:
               key: ${{ inputs.ssh_private_key }}
 
+        - name: Add Linode to known_hosts
+          shell: bash
+          run: |
+              mkdir -p ~/.ssh
+              ssh-keyscan -H ${{ inputs.linode_host }} >> ~/.ssh/known_hosts
+
+        - name: Verify SSH connection
+          shell: bash
+          run: |
+              ssh -o BatchMode=yes -o ConnectTimeout=5 ${{ inputs.linode_username }}@${{ inputs.linode_host }} 'echo "SSH connection successful"'
+          continue-on-error: false
+
         - name: Copy .env to Linode
           shell: bash
           run: scp .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
@@ -95,16 +107,29 @@ runs:
           shell: bash
           run: |
               ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
+                set -e
                 echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-                docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+                
+                # Pull the new image
+                docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest || exit 1
+                
+                # Stop and remove existing container if it exists
                 docker stop ${{ inputs.docker_container_name }} || true
                 docker rm ${{ inputs.docker_container_name }} || true
+                
+                # Run the new container
                 docker run -d \
                   --name ${{ inputs.docker_container_name }} \
                   --restart unless-stopped \
                   -p 3000:${{ inputs.port }} \
                   --env-file /home/${{ inputs.linode_username }}/.env \
-                  ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+                  ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest || exit 1
+                
+                # Verify container is running
+                docker ps | grep ${{ inputs.docker_container_name }} || exit 1
+                
+                # Cleanup
                 docker image prune -af
                 docker logout ghcr.io
               ENDSSH
+          continue-on-error: false

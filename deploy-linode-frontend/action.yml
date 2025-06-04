@@ -2,113 +2,109 @@ name: "Deploy Frontend App to Linode"
 description: "Builds Docker image, pushes to GHCR, and deploys to Linode over SSH"
 
 inputs:
-  docker_image_name:
-    description: "Docker Image Name"
-    required: true
-  docker_container_name:
-    description: "Name for the running container"
-    required: true
-  port:
-    description: "Docker internal port"
-    default: "80"
-  env_vars:
-    required: false
-    description: "Multiline string of KEY=VALUE env vars to write to .env"
-  ssh_private_key:
-    description: "Private key for the remote destination server"
-    required: true
-  ssh_known_hosts:
-    description: "List of known hosts"
-    required: true
-  linode_username:
-    description: "linode remote server username"
-    required: true
-  linode_host:
-    description: "linode remote server ip host"
-    required: true
-  github_token:
-    description: "token for pushing to ghcr.io"
-    required: true
-  nginx_conf_dir:
-    description: "Path to the nginx config directory in the repo (optional)"
-    required: false
+    docker_image_name:
+        description: "Docker Image Name"
+        required: true
+    docker_container_name:
+        description: "Name for the running container"
+        required: true
+    port:
+        description: "Docker internal port"
+        default: "80"
+    env_vars:
+        required: false
+        description: "Multiline string of KEY=VALUE env vars to write to .env"
+    ssh_private_key:
+        description: "Private key for the remote destination server"
+        required: true
+    linode_username:
+        description: "linode remote server username"
+        required: true
+    linode_host:
+        description: "linode remote server ip host"
+        required: true
+    github_token:
+        description: "token for pushing to ghcr.io"
+        required: true
+    nginx_conf_dir:
+        description: "Path to the nginx config directory in the repo (optional)"
+        required: false
 
 runs:
-  using: "composite"
-  steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+    using: "composite"
+    steps:
+        - name: Checkout code
+          uses: actions/checkout@v3
 
-    - name: Set lowercase repository owner
-      shell: bash
-      run: echo "REPO_OWNER_LOWERCASE=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+        - name: Set lowercase repository owner
+          shell: bash
+          run: echo "REPO_OWNER_LOWERCASE=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-    - name: Cache yarn and Vite
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cache/yarn
-          node_modules
-        key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-        restore-keys: ${{ runner.os }}-yarn-
+        - name: Cache yarn and Vite
+          uses: actions/cache@v3
+          with:
+              path: |
+                  ~/.cache/yarn
+                  node_modules
+              key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+              restore-keys: ${{ runner.os }}-yarn-
 
-    - name: Install dependencies and build Vite app
-      shell: bash
-      run: |
-        yarn install --frozen-lockfile
-        yarn build
+        - name: Install dependencies and build Vite app
+          shell: bash
+          run: |
+              yarn install --frozen-lockfile
+              yarn build
 
-    - name: Create .env file
-      shell: bash
-      run: echo "${{ inputs.env_vars }}" > .env
+        - name: Create .env file
+          shell: bash
+          run: echo "${{ inputs.env_vars }}" > .env
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+        - name: Set up Docker Buildx
+          uses: docker/setup-buildx-action@v2
 
-    - name: Log in to GitHub Container Registry
-      uses: docker/login-action@v2
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ inputs.github_token }}
+        - name: Log in to GitHub Container Registry
+          uses: docker/login-action@v2
+          with:
+              registry: ghcr.io
+              username: ${{ github.actor }}
+              password: ${{ inputs.github_token }}
 
-    - name: Build and push Docker image with prebuilt dist
-      uses: docker/build-push-action@v4
-      with:
-        context: .
-        push: true
-        tags: |
-          ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:${{ github.sha }}
-          ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        build-contexts: |
-          dist=./dist
+        - name: Build and push Docker image with prebuilt dist
+          uses: docker/build-push-action@v4
+          with:
+              context: .
+              push: true
+              tags: |
+                  ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:${{ github.sha }}
+                  ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+              cache-from: type=gha
+              cache-to: type=gha,mode=max
+              build-contexts: |
+                  dist=./dist
 
-    - name: Install SSH key
-      uses: shimataro/ssh-key-action@v2
-      with:
-        key: ${{ inputs.ssh_private_key }}
-        known_hosts: ${{ inputs.ssh_known_hosts }}
+        - name: Install SSH key
+          uses: shimataro/ssh-key-action@v2
+          with:
+              key: ${{ inputs.ssh_private_key }}
 
-    - name: Copy .env to Linode
-      shell: bash
-      run: scp .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
+        - name: Copy .env to Linode
+          shell: bash
+          run: scp .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
 
-    - name: Deploy on Linode
-      shell: bash
-      run: |
-        ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
-          echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
-          docker stop ${{ inputs.docker_container_name }} || true
-          docker rm ${{ inputs.docker_container_name }} || true
-          docker run -d \
-            --name ${{ inputs.docker_container_name }} \
-            --restart unless-stopped \
-            -p 3000:${{ inputs.port }} \
-            --env-file /home/${{ inputs.linode_username }}/.env \
-            ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
-          docker image prune -af
-          docker logout ghcr.io
-        ENDSSH
+        - name: Deploy on Linode
+          shell: bash
+          run: |
+              ssh ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
+                echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+                docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+                docker stop ${{ inputs.docker_container_name }} || true
+                docker rm ${{ inputs.docker_container_name }} || true
+                docker run -d \
+                  --name ${{ inputs.docker_container_name }} \
+                  --restart unless-stopped \
+                  -p 3000:${{ inputs.port }} \
+                  --env-file /home/${{ inputs.linode_username }}/.env \
+                  ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest
+                docker image prune -af
+                docker logout ghcr.io
+              ENDSSH

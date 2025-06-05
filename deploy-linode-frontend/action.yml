@@ -90,6 +90,15 @@ runs:
         chmod 600 ~/.ssh/id_rsa
         chmod 700 ~/.ssh
 
+        # Debug: Check key format and test connection
+        echo "SSH Key first line:"
+        head -n 1 ~/.ssh/id_rsa
+        echo "SSH Key last line:"
+        tail -n 1 ~/.ssh/id_rsa
+
+        # Test SSH connection
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -v ${{ inputs.linode_username }}@${{ inputs.linode_host }} 'echo "SSH connection successful"'
+
     - name: Deploy on Linode
       shell: bash
       run: |

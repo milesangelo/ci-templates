@@ -82,44 +82,33 @@ runs:
         build-contexts: |
           dist=./dist
 
-    - name: Set up SSH
-      shell: bash
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ inputs.ssh_private_key }}" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-        chmod 700 ~/.ssh
-
-        # Add SSH key to agent or specify key explicitly
-        ssh-add ~/.ssh/deploy_key || true
-
-        # Debug: Check key format and test connection
-        echo "SSH Key first line:"
-        head -n 1 ~/.ssh/deploy_key
-        echo "SSH Key last line:"
-        tail -n 1 ~/.ssh/deploy_key
-
-        # Test SSH connection with explicit key
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -v ${{ inputs.linode_username }}@${{ inputs.linode_host }} 'echo "SSH connection successful"'
+    - name: Copy .env file to Linode
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ inputs.linode_host }}
+        username: ${{ inputs.linode_username }}
+        key: ${{ inputs.ssh_private_key }}
+        source: ".env"
+        target: "/home/${{ inputs.linode_username }}/"
+        strip_components: 0
 
     - name: Deploy on Linode
-      shell: bash
-      run: |
-        # Copy .env to Linode
-        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
-
-        # Deploy via SSH
-        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ inputs.linode_host }}
+        username: ${{ inputs.linode_username }}
+        key: ${{ inputs.ssh_private_key }}
+        script: |
           set -e
           echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          
+
           # Pull the new image
           docker pull ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest || exit 1
-          
+
           # Stop and remove existing container if it exists
           docker stop ${{ inputs.docker_container_name }} || true
           docker rm ${{ inputs.docker_container_name }} || true
-          
+
           # Run the new container
           docker run -d \
             --name ${{ inputs.docker_container_name }} \
@@ -127,12 +116,10 @@ runs:
             -p 3000:${{ inputs.port }} \
             --env-file /home/${{ inputs.linode_username }}/.env \
             ghcr.io/${{ env.REPO_OWNER_LOWERCASE }}/${{ inputs.docker_image_name }}:latest || exit 1
-          
+
           # Verify container is running
           docker ps | grep ${{ inputs.docker_container_name }} || exit 1
-          
+
           # Cleanup
           docker image prune -af
           docker logout ghcr.io
-        ENDSSH
-      continue-on-error: false

@@ -86,27 +86,30 @@ runs:
       shell: bash
       run: |
         mkdir -p ~/.ssh
-        echo "${{ inputs.ssh_private_key }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
+        echo "${{ inputs.ssh_private_key }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
         chmod 700 ~/.ssh
+
+        # Add SSH key to agent or specify key explicitly
+        ssh-add ~/.ssh/deploy_key || true
 
         # Debug: Check key format and test connection
         echo "SSH Key first line:"
-        head -n 1 ~/.ssh/id_rsa
+        head -n 1 ~/.ssh/deploy_key
         echo "SSH Key last line:"
-        tail -n 1 ~/.ssh/id_rsa
+        tail -n 1 ~/.ssh/deploy_key
 
-        # Test SSH connection
-        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -v ${{ inputs.linode_username }}@${{ inputs.linode_host }} 'echo "SSH connection successful"'
+        # Test SSH connection with explicit key
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 -v ${{ inputs.linode_username }}@${{ inputs.linode_host }} 'echo "SSH connection successful"'
 
     - name: Deploy on Linode
       shell: bash
       run: |
         # Copy .env to Linode
-        scp -o StrictHostKeyChecking=no .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
+        scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no .env ${{ inputs.linode_username }}@${{ inputs.linode_host }}:/home/${{ inputs.linode_username }}/.env
 
         # Deploy via SSH
-        ssh -o StrictHostKeyChecking=no ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
+        ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ inputs.linode_username }}@${{ inputs.linode_host }} << 'ENDSSH'
           set -e
           echo "${{ inputs.github_token }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           
